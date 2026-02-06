@@ -1,0 +1,236 @@
+<script setup>
+import { onMounted, ref, onUnmounted, watch } from 'vue';
+import * as echarts from 'echarts';
+import { fetchStockData } from '../services/stockApi';
+
+const props = defineProps({
+  searchQuery: {
+    type: String,
+    default: ''
+  }
+});
+
+const chartRef = ref(null);
+let myChart = null;
+const lastUpdated = ref('');
+let refreshTimer = null;
+const allData = ref([]); // Store full data
+
+const initChart = async () => {
+  if (!chartRef.value) return;
+  
+  if (!myChart) {
+      myChart = echarts.init(chartRef.value);
+      myChart.showLoading({
+        text: '正在加载实时数据...',
+        color: '#ef4444',
+        textColor: '#ffffff',
+        maskColor: 'rgba(15, 23, 42, 0.8)'
+      });
+  }
+
+  await loadData();
+  
+  // Start auto-refresh
+  startAutoRefresh();
+};
+
+const loadData = async () => {
+    try {
+        const data = await fetchStockData();
+        allData.value = data;
+        updateChart(data);
+        lastUpdated.value = new Date().toLocaleTimeString();
+    } catch (error) {
+        console.error("Failed to load data:", error);
+        myChart && myChart.hideLoading();
+    }
+};
+
+const isMobile = ref(window.innerWidth < 768);
+
+const updateChart = (data) => {
+    if (!myChart) return;
+    
+    // ... filtering logic (omitted, stays same) ...
+    let displayData = data;
+    if (props.searchQuery) {
+        // ... (same as before) ...
+         const query = props.searchQuery.toLowerCase();
+        // Deep filter
+        displayData = data.map(sector => {
+            const matchingStocks = sector.children.filter(stock => 
+                stock.name.toLowerCase().includes(query) ||
+                (stock.code && stock.code.includes(query))
+            );
+            if (matchingStocks.length > 0) {
+                return {
+                    ...sector,
+                    children: matchingStocks,
+                    value: [sector.value[0], sector.value[1]] 
+                };
+            }
+            return null;
+        }).filter(Boolean);
+    }
+
+    const options = {
+      tooltip: {
+        // ... (same tooltip) ...
+        backgroundColor: 'rgba(30, 41, 59, 0.9)',
+        borderColor: '#334155',
+        textStyle: { color: '#f8fafc' },
+        formatter: function (info) {
+          const value = info.value; // [MarketCap, Change]
+          const treePathInfo = info.treePathInfo;
+          const treePath = [];
+          for (let i = 1; i < treePathInfo.length; i++) {
+            treePath.push(treePathInfo[i].name);
+          }
+          const change = value[1] !== undefined ? value[1] : 0;
+          const cap = value[0];
+          
+          return [
+            '<div class="font-bold border-b border-gray-600 pb-1 mb-1">' + echarts.format.encodeHTML(treePath.join(' > ')) + '</div>',
+            '涨跌幅: <span class="' + (change >= 0 ? 'text-red-400' : 'text-green-400') + '">' + change + '%</span>',
+            '<br/>',
+            '市值: ' + (cap / 100000000).toFixed(2) + '亿'
+          ].join('');
+        }
+      },
+      series: [
+        {
+          name: 'A股全景',
+          type: 'treemap',
+          visibleMin: isMobile.value ? 1000 : 0, // Hide tiny blocks on mobile to reduce clutter
+          roam: false,
+          nodeClick: isMobile.value ? 'link' : 'zoomToNode', // On mobile, zoom might be tricky, but zoomToNode is ok. Let's keep zoom.
+          nodeClick: 'zoomToNode', 
+          zoomToNodeRatio: 0.1,
+          width: '96%',
+          height: '96%',
+          top: '2%',
+          bottom: '2%',
+          left: '2%',
+          right: '2%',
+          squareRatio: 0.5 * (1 + Math.sqrt(5)),
+          label: {
+            show: true,
+            formatter: function(params) {
+                if (params.data && params.data.value) {
+                   const change = params.data.value[1];
+                   if (isMobile.value) {
+                       // Compact mobile label
+                       // Only show name if concise?
+                       return `${params.name}\n${change}%`;
+                   }
+                   return `${params.name}\n${change > 0 ? '+' : ''}${change}%`;
+                }
+                return params.name;
+            },
+            fontSize: isMobile.value ? 11 : 12, // Slightly larger for readability? No 10 was small.
+            lineHeight: isMobile.value ? 13 : 16,
+            color: '#fff',
+            textShadowColor: 'rgba(0,0,0,0.8)',
+            textShadowBlur: 3
+          },
+          itemStyle: {
+            borderColor: '#0b1121' // Match bg color for cleaner gaps
+          },
+          breadcrumb: {
+              show: true,
+              bottom: 10,
+              left: 'center',
+              height: 24,
+              emptyItemWidth: 25,
+              itemStyle: {
+                  color: 'rgba(51, 65, 85, 0.8)', // Slate-700
+                  borderColor: '#475569',
+                  borderWidth: 1,
+                  shadowBlur: 2
+              },
+              textStyle: {
+                  color: '#e2e8f0',
+                  fontSize: 12
+              }
+          },
+          levels: [
+            {
+                itemStyle: {
+                    borderWidth: 0,
+                    gapWidth: 1
+                }
+            },
+            {
+              // Level 1: Sectors
+              itemStyle: {
+                borderWidth: 1,
+                borderColor: '#0f172a',
+                gapWidth: 1
+              },
+              upperLabel: {
+                show: true,
+                height: isMobile.value ? 16 : 20,
+                color: '#e2e8f0',
+                fontWeight: 'bold',
+                fontSize: isMobile.value ? 10 : 12,
+                fontFamily: 'sans-serif',
+                formatter: '{b}' 
+              }
+            },
+            {
+              // Level 2: Leaves (Stocks)
+              itemStyle: {
+                borderWidth: 0.5,
+                gapWidth: 0,
+                borderColor: '#0f172a' 
+              }
+            }
+          ],
+          data: displayData
+        }
+      ]
+    };
+
+    myChart.hideLoading();
+    myChart.setOption(options);
+};
+
+const startAutoRefresh = () => {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => {
+        loadData();
+    }, 60000); // 1 minute
+};
+
+watch(() => props.searchQuery, () => {
+    updateChart(allData.value);
+});
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth < 768;
+  myChart && myChart.resize();
+  // We might want to re-set options if mobile state changes to adjust fonts
+  if (allData.value.length > 0) {
+      updateChart(allData.value);
+  }
+};
+
+onMounted(() => {
+  initChart();
+  window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+  if (refreshTimer) clearInterval(refreshTimer);
+  myChart && myChart.dispose();
+});
+</script>
+
+<template>
+  <div ref="chartRef" class="w-full h-full bg-dark-bg"></div>
+</template>
+
+<style scoped>
+</style>
