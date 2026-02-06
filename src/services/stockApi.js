@@ -95,15 +95,22 @@ export const fetchStockData = async () => {
       const stocks = await getStocksInSector(sector.f12);
       
       // Format stocks
-      const children = stocks.map(stock => {
+      const children = stocks.map((stock, index) => {
         // Handle invalid numbers
         const priceChange = stock.f3 === '-' ? 0 : parseFloat(stock.f3);
         const marketCap = stock.f20 === '-' ? 0 : parseFloat(stock.f20);
+        
+        // Smart Labeling Strategy
+        // Top 15: Full Label (Name + %)
+        // Others: Name Only (Show as much as possible)
+        let labelShowType = 'name';
+        if (index < 15) labelShowType = 'full';
         
         return {
           name: stock.f14,
           code: stock.f12, // Add Stock Code
           value: [marketCap, priceChange], // [MarketCap, Change%] - Index 0 determines Area Size
+          labelShowType: labelShowType, // Pass to frontend for formatter
           itemStyle: {
             // Color mapping: Red for Up, Green for Down
             color: priceChange > 0 ? 

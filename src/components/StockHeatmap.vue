@@ -103,14 +103,14 @@ const updateChart = (data) => {
           name: 'A股全景',
           type: 'treemap',
           visibleMin: isMobile.value ? 1000 : 0, // Hide tiny blocks on mobile to reduce clutter
-          roam: false,
+          roam: true, // Enable Zoom and Pan (PC: Wheel/Drag, Mobile: Pinch/Drag)
           nodeClick: isMobile.value ? 'link' : 'zoomToNode', // On mobile, zoom might be tricky, but zoomToNode is ok. Let's keep zoom.
           nodeClick: 'zoomToNode', 
           zoomToNodeRatio: 0.1,
-          width: '96%',
-          height: '96%',
-          top: '2%',
-          bottom: '2%',
+          width: 'auto', 
+          // height: 'auto',
+          top: 45, // Fixed pixel margin to clear Reset Button
+          bottom: 50, // Fixed pixel margin to clear Breadcrumb
           left: '2%',
           right: '2%',
           squareRatio: 0.5 * (1 + Math.sqrt(5)),
@@ -119,14 +119,20 @@ const updateChart = (data) => {
             formatter: function(params) {
                 if (params.data && params.data.value) {
                    const change = params.data.value[1];
-                   if (isMobile.value) {
-                       // Compact mobile label
-                       // Only show name if concise?
-                       return `${params.name}\n${change}%`;
+                   const type = params.data.labelShowType || 'none';
+                   
+                   // Dynamic Detail Level
+                   if (type === 'full') {
+                       if (isMobile.value) {
+                           return `${params.name}\n${Math.round(change)}%`;
+                       }
+                       return `${params.name}\n${change > 0 ? '+' : ''}${change}%`;
+                   } else {
+                       // Show name for everyone else
+                       return params.name;
                    }
-                   return `${params.name}\n${change > 0 ? '+' : ''}${change}%`;
                 }
-                return params.name;
+                return params.name; // Fallback for sectors
             },
             fontSize: isMobile.value ? 11 : 12, // Slightly larger for readability? No 10 was small.
             lineHeight: isMobile.value ? 13 : 16,
@@ -135,11 +141,15 @@ const updateChart = (data) => {
             textShadowBlur: 3
           },
           itemStyle: {
-            borderColor: '#0b1121' // Match bg color for cleaner gaps
+            borderColor: '#0b1121' 
           },
+          // FIX: Override default rainbow palette with a single neutral color.
+          // This ensures Sectors (Level 1) don't get assigned random colors (Purple, Orange etc).
+          // Only the Leaves (Level 2) with explicit ItemStyle will show Red/Green.
+          color: ['#334155'],
           breadcrumb: {
               show: true,
-              bottom: 10,
+              bottom: 4, // Hug bottom
               left: 'center',
               height: 24,
               emptyItemWidth: 25,
@@ -166,7 +176,8 @@ const updateChart = (data) => {
               itemStyle: {
                 borderWidth: 1,
                 borderColor: '#0f172a',
-                gapWidth: 1
+                gapWidth: 1,
+                color: '#1e293b' // Dark background for sectors, preventing palette leak
               },
               upperLabel: {
                 show: true,
@@ -207,6 +218,16 @@ watch(() => props.searchQuery, () => {
     updateChart(allData.value);
 });
 
+const resetZoom = () => {
+    if (!myChart) return;
+    // Dispatch restore action to reset zoom/pan
+    myChart.dispatchAction({
+        type: 'restore' 
+    });
+    // Also re-set option to ensure clean state if needed
+    // updateChart(allData.value); 
+};
+
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768;
   myChart && myChart.resize();
@@ -229,7 +250,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="chartRef" class="w-full h-full bg-dark-bg"></div>
+  <div class="relative w-full h-full">
+      <div ref="chartRef" class="w-full h-full bg-[#0b1121]"></div>
+      
+      <!-- Reset Zoom Button -->
+      <button 
+        @click="resetZoom"
+        class="absolute top-2 right-4 z-10 bg-slate-800/80 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 transition-all shadow-lg flex items-center gap-1 backdrop-blur-sm"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+        </svg>
+        重置视图
+      </button>
+  </div>
 </template>
 
 <style scoped>
