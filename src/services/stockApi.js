@@ -19,7 +19,6 @@ const fetchData = async (params) => {
   const queryString = new URLSearchParams({
     ...COMMON_PARAMS,
     ...params
-    // cb: ... // REMOVED: Let fetch-jsonp handle the callback parameter automatically
   }).toString();
 
   const url = `${API_BASE}?${queryString}`;
@@ -41,10 +40,50 @@ const fetchData = async (params) => {
 };
 
 /**
+ * Fetch a single stock/index quote
+ * @param {String} secid e.g. '1.000001'
+ * @param {String} fields 
+ */
+export const fetchSingleStock = async (secid, fields = 'f57,f58,f43,f169,f170') => {
+  const params = {
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    np: '1',
+    po: '1',
+    secid: secid,
+    fields: fields
+  };
+  const queryString = new URLSearchParams(params).toString();
+  const url = `https://push2.eastmoney.com/api/qt/stock/get?${queryString}`;
+  try {
+    const response = await fetchJsonp(url, {
+      jsonpCallback: 'cb',
+      timeout: 5000
+    });
+    const json = await response.json();
+    return json.data;
+  } catch (error) {
+    console.error(`Error fetching single stock ${secid}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Fetch real-time market indices for Shanghai, Shenzhen, Chinext
+ */
+export const fetchMarketIndices = async () => {
+  const secids = ['1.000001', '0.399001', '0.399006'];
+  const promises = secids.map(id => fetchSingleStock(id));
+  const results = await Promise.all(promises);
+  return results.filter(Boolean);
+};
+
+/**
  * Get all sectors (Industry Blocks)
  */
 export const getSectors = async () => {
-    // fs=m:90+t:2+f:!50 represents Industry Plates
+  // fs=m:90+t:2+f:!50 represents Industry Plates
   const params = {
     pn: 1,
     pz: 200, // Get top 200 sectors (should cover all)
@@ -71,12 +110,7 @@ export const getStocksInSector = async (sectorCode) => {
 };
 
 /**
- * Main function to get Heatmap Data
- * Strategy:
- * 1. Get All Sectors
- * 2. Sort sectors by Market Cap (to show significant ones)
- * 3. Fetch stocks for Top N Sectors (e.g., Top 50)
- * 4. Format for ECharts
+ * Main function to get Heatmap Data with dynamic deduplication
  */
 export const fetchStockData = async () => {
   try {
@@ -84,50 +118,87 @@ export const fetchStockData = async () => {
     const sectors = await getSectors();
     if (!sectors.length) return [];
 
-    // Filter out invalid sectors or too small?
-    // Sort by Market Cap (f20) descending to prioritize big sectors
-    // INCREASED: Top 50 sectors to reduce empty space and show more market breadth
-    const sortedSectors = sectors.sort((a, b) => b.f20 - a.f20).slice(0, 50); 
+    // Filter out Roman numeral III sectors first (to avoid double-listing Level 2 and Level 3)
+    const filteredSectors = sectors.filter(s => s.f14 && !s.f14.includes('Ⅲ'));
+
+    // Sort by Market Cap descending, and take the top 80 candidate sectors
+    const candidateSectors = filteredSectors.sort((a, b) => b.f20 - a.f20).slice(0, 80); 
     
     // 2. Fetch Stocks for these sectors in parallel
-    const sectorPromises = sortedSectors.map(async (sector) => {
-      // INCREASED limit per sector to 200 to fill gaps
+    const sectorPromises = candidateSectors.map(async (sector) => {
       const stocks = await getStocksInSector(sector.f12);
+      return {
+        code: sector.f12,
+        rawName: sector.f14,
+        name: sector.f14.replace('Ⅱ', ''), // Strip Roman II suffix from display name
+        marketCap: sector.f20 === '-' ? 0 : parseFloat(sector.f20),
+        change: sector.f3 === '-' ? 0 : parseFloat(sector.f3),
+        stocks: stocks
+      };
+    });
+
+    const sectorsWithStocks = await Promise.all(sectorPromises);
+
+    // 3. Dynamic Deduplication Algorithm based on Stock Overlap
+    // Sort sectors by stock count ascending (most specific first)
+    const sortedByCount = [...sectorsWithStocks].sort((a, b) => a.stocks.length - b.stocks.length);
+    
+    const keptSectors = [];
+    const coveredStockCodes = new Set();
+    const OVERLAP_THRESHOLD = 0.45; // Discard sector if >45% of its stocks are already covered
+
+    for (const sector of sortedByCount) {
+      if (sector.stocks.length === 0) continue;
       
-      // Format stocks
-      const children = stocks.map((stock, index) => {
-        // Handle invalid numbers
+      let coveredCount = 0;
+      for (const stock of sector.stocks) {
+        if (coveredStockCodes.has(stock.f12)) {
+          coveredCount++;
+        }
+      }
+      
+      const overlapRatio = coveredCount / sector.stocks.length;
+      
+      // Keep sector only if it is sufficiently unique
+      if (overlapRatio <= OVERLAP_THRESHOLD) {
+        keptSectors.push(sector);
+        for (const stock of sector.stocks) {
+          coveredStockCodes.add(stock.f12);
+        }
+      }
+    }
+
+    // 4. Format the final kept sectors and stocks for ECharts
+    // Sort final kept sectors by market cap descending to display larger sectors first
+    const finalSectors = keptSectors.sort((a, b) => b.marketCap - a.marketCap);
+
+    const results = finalSectors.map(sector => {
+      const children = sector.stocks.map((stock, index) => {
         const priceChange = stock.f3 === '-' ? 0 : parseFloat(stock.f3);
         const marketCap = stock.f20 === '-' ? 0 : parseFloat(stock.f20);
         
-        // Smart Labeling Strategy
-        // Top 15: Full Label (Name + %)
-        // Others: Name Only (Show as much as possible)
+        // Smart Labeling: Top 15 display name + change%, others display name only
         let labelShowType = 'name';
         if (index < 15) labelShowType = 'full';
         
         return {
           name: stock.f14,
-          code: stock.f12, // Add Stock Code
+          code: stock.f12,
           value: [marketCap, priceChange], // [MarketCap, Change%] - Index 0 determines Area Size
-          labelShowType: labelShowType, // Pass to frontend for formatter
+          labelShowType: labelShowType,
           itemStyle: {
-            // Color mapping: Red for Up, Green for Down
-            color: priceChange > 0 ? 
-                   generateColor('#ef4444', priceChange) : 
-                   (priceChange < 0 ? generateColor('#22c55e', priceChange) : '#334155')
+            color: generateHSLColor(priceChange)
           }
         };
       });
 
       return {
-        name: sector.f14,
-        value: [sector.f3 === '-' ? 0 : parseFloat(sector.f3), sector.f20],
+        name: sector.name,
+        value: [sector.change, sector.marketCap],
         children: children
       };
     });
 
-    const results = await Promise.all(sectorPromises);
     return results;
 
   } catch (error) {
@@ -136,32 +207,27 @@ export const fetchStockData = async () => {
   }
 };
 
-// Helper: Adjust color intensity based on percentage change
-function generateColor(baseHex, changePercent) {
-  // Max intensity at 10% change (limit up/down)
-  // Ensure changePercent is positive for calculation ratio
-  const val = Math.abs(changePercent);
-  const ratio = Math.min(val / 10, 1);
-  
-  // Base colors
-  // Red: #ef4444 (239, 68, 68)
-  // Green: #22c55e (34, 197, 94)
-  // Background: #1e293b (30, 41, 59)
-  
-  const bg = { r: 30, g: 41, b: 59 };
-  let fg = { r: 0, g: 0, b: 0 };
-  
-  if (baseHex === '#ef4444') {
-      fg = { r: 239, g: 68, b: 68 };
-  } else {
-      fg = { r: 34, g: 197, b: 94 };
+// Helper: Generate HSL color based on percentage change
+function generateHSLColor(changePercent) {
+  if (changePercent === 0 || isNaN(changePercent)) {
+    return 'hsl(215, 25%, 27%)'; // Slate-700 / dark slate gray for flat
   }
   
-  // Linear interpolation
-  // P3 color space might look better but RGB is standard
-  const r = Math.round(bg.r + (fg.r - bg.r) * ratio);
-  const g = Math.round(bg.g + (fg.g - bg.g) * ratio);
-  const b = Math.round(bg.b + (fg.b - bg.b) * ratio);
+  const absVal = Math.abs(changePercent);
+  const ratio = Math.min(absVal / 8, 1); // Clamp maximum intensity at 8% change
   
-  return `rgb(${r}, ${g}, ${b})`;
+  if (changePercent > 0) {
+    // Red HSL: Hue = 356 (vibrant crimson red)
+    // Saturation ranges 60% -> 90%, Lightness ranges 15% -> 42%
+    const s = Math.round(60 + 30 * ratio);
+    const l = Math.round(15 + 27 * ratio);
+    return `hsl(356, ${s}%, ${l}%)`;
+  } else {
+    // Green HSL: Hue = 142 (emerald green)
+    // Saturation ranges 55% -> 85%, Lightness ranges 13% -> 36%
+    const s = Math.round(55 + 30 * ratio);
+    const l = Math.round(13 + 23 * ratio);
+    return `hsl(142, ${s}%, ${l}%)`;
+  }
 }
+

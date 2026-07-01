@@ -10,6 +10,8 @@ const props = defineProps({
   }
 });
 
+const emit = defineEmits(['select-stock']);
+
 const chartRef = ref(null);
 let myChart = null;
 const lastUpdated = ref('');
@@ -27,6 +29,19 @@ const initChart = async () => {
         textColor: '#ffffff',
         maskColor: 'rgba(15, 23, 42, 0.8)'
       });
+
+      // Bind click event to emit selected stock
+      myChart.on('click', (params) => {
+        // Check if the clicked node is a leaf (stock node has 'code')
+        if (params.data && params.data.code) {
+          emit('select-stock', {
+            name: params.name,
+            code: params.data.code,
+            change: params.data.value[1],
+            marketCap: params.data.value[0]
+          });
+        }
+      });
   }
 
   await loadData();
@@ -41,6 +56,7 @@ const loadData = async () => {
         allData.value = data;
         updateChart(data);
         lastUpdated.value = new Date().toLocaleTimeString();
+        emit('data-loaded', lastUpdated.value);
     } catch (error) {
         console.error("Failed to load data:", error);
         myChart && myChart.hideLoading();
@@ -52,10 +68,8 @@ const isMobile = ref(window.innerWidth < 768);
 const updateChart = (data) => {
     if (!myChart) return;
     
-    // ... filtering logic (omitted, stays same) ...
     let displayData = data;
     if (props.searchQuery) {
-        // ... (same as before) ...
          const query = props.searchQuery.toLowerCase();
         // Deep filter
         displayData = data.map(sector => {
@@ -76,43 +90,83 @@ const updateChart = (data) => {
 
     const options = {
       tooltip: {
-        // ... (same tooltip) ...
-        backgroundColor: 'rgba(30, 41, 59, 0.9)',
-        borderColor: '#334155',
-        textStyle: { color: '#f8fafc' },
+        show: true,
+        trigger: 'item',
+        backgroundColor: 'rgba(15, 23, 42, 0.85)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        padding: [10, 14],
+        textStyle: { color: '#f8fafc', fontSize: 13 },
+        extraCssText: 'backdrop-filter: blur(8px); border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3); z-index: 99;',
         formatter: function (info) {
+          if (!info || !info.value) return '';
           const value = info.value; // [MarketCap, Change]
-          const treePathInfo = info.treePathInfo;
-          const treePath = [];
-          for (let i = 1; i < treePathInfo.length; i++) {
-            treePath.push(treePathInfo[i].name);
-          }
+          const pathInfo = info.treePathInfo;
+          
+          // A node is a stock if it is a leaf (depth level 3)
+          const isStock = Array.isArray(value) && value.length === 2 && pathInfo && pathInfo.length > 2;
           const change = value[1] !== undefined ? value[1] : 0;
           const cap = value[0];
+          const name = info.name;
           
-          return [
-            '<div class="font-bold border-b border-gray-600 pb-1 mb-1">' + echarts.format.encodeHTML(treePath.join(' > ')) + '</div>',
-            '涨跌幅: <span class="' + (change >= 0 ? 'text-red-400' : 'text-green-400') + '">' + change + '%</span>',
-            '<br/>',
-            '市值: ' + (cap / 100000000).toFixed(2) + '亿'
-          ].join('');
+          const sectorName = pathInfo && pathInfo[1] ? pathInfo[1].name : '';
+          
+          const changeClass = change > 0 
+            ? 'color: #ef4444; font-weight: bold;' 
+            : (change < 0 ? 'color: #22c55e; font-weight: bold;' : 'color: #94a3b8; font-weight: bold;');
+          const changeSign = change > 0 ? '+' : '';
+          
+          if (isStock) {
+            return `
+              <div style="font-family: system-ui, -apple-system, sans-serif; min-width: 140px;">
+                <div style="font-size: 10px; color: #64748b; margin-bottom: 2px;">${sectorName}</div>
+                <div style="font-size: 14px; font-weight: 700; margin-bottom: 6px; color: #fff;">${echarts.format.encodeHTML(name)}</div>
+                <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; gap: 12px;">
+                    <span style="color: #94a3b8;">涨跌幅</span>
+                    <span style="${changeClass}">${changeSign}${change.toFixed(2)}%</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;">
+                    <span style="color: #94a3b8;">总市值</span>
+                    <span style="color: #f1f5f9; font-weight: 500;">${(cap / 100000000).toFixed(2)} 亿</span>
+                  </div>
+                  <div style="font-size: 9px; color: #ef4444; margin-top: 4px; text-align: center; background: rgba(239, 68, 68, 0.08); padding: 2px 4px; border-radius: 4px; font-weight: 500;">点击查看分时/日K线</div>
+                </div>
+              </div>
+            `;
+          } else {
+            return `
+              <div style="font-family: system-ui, -apple-system, sans-serif; min-width: 140px;">
+                <div style="font-size: 10px; color: #64748b; margin-bottom: 2px;">行业板块</div>
+                <div style="font-size: 14px; font-weight: 700; margin-bottom: 6px; color: #fff;">${echarts.format.encodeHTML(name)}</div>
+                <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; gap: 12px;">
+                    <span style="color: #94a3b8;">板块均幅</span>
+                    <span style="${changeClass}">${changeSign}${change.toFixed(2)}%</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; gap: 12px;">
+                    <span style="color: #94a3b8;">总市值</span>
+                    <span style="color: #f1f5f9; font-weight: 500;">${(cap / 100000000).toFixed(2)} 亿</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
         }
       },
       series: [
         {
           name: 'A股全景',
           type: 'treemap',
-          visibleMin: isMobile.value ? 1000 : 0, // Hide tiny blocks on mobile to reduce clutter
-          roam: true, // Enable Zoom and Pan (PC: Wheel/Drag, Mobile: Pinch/Drag)
-          nodeClick: isMobile.value ? 'link' : 'zoomToNode', // On mobile, zoom might be tricky, but zoomToNode is ok. Let's keep zoom.
+          visibleMin: isMobile.value ? 1200 : 0, // Hide tiny blocks on mobile to reduce clutter
+          roam: true, // Enable Zoom and Pan
           nodeClick: 'zoomToNode', 
           zoomToNodeRatio: 0.1,
           width: 'auto', 
-          // height: 'auto',
-          top: 45, // Fixed pixel margin to clear Reset Button
-          bottom: 50, // Fixed pixel margin to clear Breadcrumb
-          left: '2%',
-          right: '2%',
+          top: 30, // Margin to clear Header/Index Bar
+          bottom: 35, // Margin to clear Breadcrumb
+          left: '1.5%',
+          right: '1.5%',
           squareRatio: 0.5 * (1 + Math.sqrt(5)),
           label: {
             show: true,
@@ -121,47 +175,43 @@ const updateChart = (data) => {
                    const change = params.data.value[1];
                    const type = params.data.labelShowType || 'none';
                    
-                   // Dynamic Detail Level
                    if (type === 'full') {
                        if (isMobile.value) {
                            return `${params.name}\n${Math.round(change)}%`;
                        }
                        return `${params.name}\n${change > 0 ? '+' : ''}${change}%`;
                    } else {
-                       // Show name for everyone else
                        return params.name;
                    }
                 }
-                return params.name; // Fallback for sectors
+                return params.name;
             },
-            fontSize: isMobile.value ? 11 : 12, // Slightly larger for readability? No 10 was small.
-            lineHeight: isMobile.value ? 13 : 16,
+            fontSize: isMobile.value ? 10 : 12,
+            lineHeight: isMobile.value ? 12 : 15,
             color: '#fff',
-            textShadowColor: 'rgba(0,0,0,0.8)',
+            textShadowColor: 'rgba(0,0,0,0.85)',
             textShadowBlur: 3
           },
           itemStyle: {
-            borderColor: '#0b1121' 
+            borderColor: '#080d1a',
+            borderWidth: 1.5
           },
-          // FIX: Override default rainbow palette with a single neutral color.
-          // This ensures Sectors (Level 1) don't get assigned random colors (Purple, Orange etc).
-          // Only the Leaves (Level 2) with explicit ItemStyle will show Red/Green.
-          color: ['#334155'],
+          color: ['#1e293b'], // Neutral fallback
           breadcrumb: {
               show: true,
-              bottom: 4, // Hug bottom
+              bottom: 4, 
               left: 'center',
               height: 24,
               emptyItemWidth: 25,
               itemStyle: {
-                  color: 'rgba(51, 65, 85, 0.8)', // Slate-700
-                  borderColor: '#475569',
+                  color: 'rgba(30, 41, 59, 0.9)', 
+                  borderColor: 'rgba(255, 255, 255, 0.1)',
                   borderWidth: 1,
                   shadowBlur: 2
               },
               textStyle: {
-                  color: '#e2e8f0',
-                  fontSize: 12
+                  color: '#cbd5e1',
+                  fontSize: 11
               }
           },
           levels: [
@@ -174,18 +224,18 @@ const updateChart = (data) => {
             {
               // Level 1: Sectors
               itemStyle: {
-                borderWidth: 1,
-                borderColor: '#0f172a',
-                gapWidth: 1,
-                color: '#1e293b' // Dark background for sectors, preventing palette leak
+                borderWidth: 1.5,
+                borderColor: '#080d1a',
+                gapWidth: 1.5,
+                color: '#0f172a'
               },
               upperLabel: {
                 show: true,
-                height: isMobile.value ? 16 : 20,
-                color: '#e2e8f0',
-                fontWeight: 'bold',
+                height: isMobile.value ? 18 : 22,
+                color: '#94a3b8',
+                fontWeight: '600',
                 fontSize: isMobile.value ? 10 : 12,
-                fontFamily: 'sans-serif',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
                 formatter: '{b}' 
               }
             },
@@ -194,7 +244,7 @@ const updateChart = (data) => {
               itemStyle: {
                 borderWidth: 0.5,
                 gapWidth: 0,
-                borderColor: '#0f172a' 
+                borderColor: 'rgba(8, 13, 26, 0.5)' 
               }
             }
           ],
@@ -220,21 +270,27 @@ watch(() => props.searchQuery, () => {
 
 const resetZoom = () => {
     if (!myChart) return;
-    // Dispatch restore action to reset zoom/pan
     myChart.dispatchAction({
         type: 'restore' 
     });
-    // Also re-set option to ensure clean state if needed
-    // updateChart(allData.value); 
 };
 
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768;
   myChart && myChart.resize();
-  // We might want to re-set options if mobile state changes to adjust fonts
   if (allData.value.length > 0) {
       updateChart(allData.value);
   }
+};
+
+const triggerManualRefresh = () => {
+  myChart && myChart.showLoading({
+    text: '正在加载实时数据...',
+    color: '#ef4444',
+    textColor: '#ffffff',
+    maskColor: 'rgba(15, 23, 42, 0.8)'
+  });
+  loadData();
 };
 
 onMounted(() => {
@@ -247,18 +303,22 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
   myChart && myChart.dispose();
 });
+
+defineExpose({
+  triggerManualRefresh
+});
 </script>
 
 <template>
   <div class="relative w-full h-full">
-      <div ref="chartRef" class="w-full h-full bg-[#0b1121]"></div>
+      <div ref="chartRef" class="w-full h-full bg-[#080d1a]"></div>
       
       <!-- Reset Zoom Button -->
       <button 
         @click="resetZoom"
-        class="absolute top-2 right-4 z-10 bg-slate-800/80 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 transition-all shadow-lg flex items-center gap-1 backdrop-blur-sm"
+        class="absolute top-2 right-4 z-10 bg-slate-800/90 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-700/80 transition-all shadow-xl flex items-center gap-1.5 backdrop-blur-md hover:scale-105 active:scale-95"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
         </svg>
         重置视图
@@ -268,3 +328,4 @@ onUnmounted(() => {
 
 <style scoped>
 </style>
+
