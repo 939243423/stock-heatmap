@@ -97,9 +97,13 @@ const initChart = async () => {
       maskColor: 'rgba(15, 23, 42, 0.8)'
     });
 
-    // Bind click event to emit selected stock
-    myChart.on('click', (params) => {
+    // Bind click and mousedown event to emit selected stock immediately on all devices
+    let lastSelectTime = 0;
+    const handleSelectStock = (params) => {
+      const now = Date.now();
+      if (now - lastSelectTime < 300) return; // Prevent double trigger
       if (params.data && params.data.code) {
+        lastSelectTime = now;
         emit('select-stock', {
           name: params.name,
           code: params.data.code,
@@ -108,7 +112,9 @@ const initChart = async () => {
           marketCap: params.data.value[0] * 100000000 // Convert scale back
         });
       }
-    });
+    };
+    myChart.on('click', handleSelectStock);
+    myChart.on('mousedown', handleSelectStock);
   }
 
   await loadData();

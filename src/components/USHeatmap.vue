@@ -26,8 +26,13 @@ const initChart = () => {
   if (!myChart) {
     myChart = echarts.init(chartRef.value);
     
-    myChart.on('click', (params) => {
+    // Bind click and mousedown event to emit selected stock immediately on all devices
+    let lastSelectTime = 0;
+    const handleSelectStock = (params) => {
+      const now = Date.now();
+      if (now - lastSelectTime < 300) return; // Prevent double trigger
       if (params.data && params.data.code) {
+        lastSelectTime = now;
         emit('select-stock', {
           name: params.name,
           code: params.data.code,
@@ -36,7 +41,9 @@ const initChart = () => {
           isUS: true // flag as US stock
         });
       }
-    });
+    };
+    myChart.on('click', handleSelectStock);
+    myChart.on('mousedown', handleSelectStock);
   }
 
   loadData();
