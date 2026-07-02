@@ -155,6 +155,111 @@ const fetchAllStocksBatch = async (marketFilter = 'all', forceRefresh = false) =
   }
 };
 
+// Local cache for Tencent quotes, keyed by marketFilter
+let _tencentStocksCache = {};
+
+/**
+ * Extract all stock symbols matching the current marketFilter from mapDataGlobal
+ * Format: sh600519, sz000001, etc.
+ */
+const getTencentCodesFromMapData = (marketFilter) => {
+  const codes = [];
+  const traverse = (node) => {
+    if (node.id && (node.id.endsWith('.SH') || node.id.endsWith('.SZ') || node.id.endsWith('.BJ'))) {
+      const fullCode = node.id;
+      const code = fullCode.split('.')[0];
+      const suffix = fullCode.split('.')[1].toLowerCase();
+      
+      let match = false;
+      if (marketFilter === 'all') {
+        match = true;
+      } else {
+        switch (marketFilter) {
+          case 'sh':
+            match = code.startsWith('60') || code.startsWith('68') || code.startsWith('900');
+            break;
+          case 'sz':
+            match = code.startsWith('00') || code.startsWith('30') || code.startsWith('20');
+            break;
+          case 'bj':
+            match = code.startsWith('920') || code.startsWith('43') || code.startsWith('83') || code.startsWith('87') || code.startsWith('88') || suffix === 'bj';
+            break;
+          case 'kcb':
+            match = code.startsWith('688');
+            break;
+          case 'cyb':
+            match = code.startsWith('300') || code.startsWith('301') || code.startsWith('302');
+            break;
+        }
+      }
+      if (match) {
+        codes.push(`${suffix}${code}`);
+      }
+    } else if (node.children) {
+      node.children.forEach(traverse);
+    }
+  };
+  traverse(mapDataGlobal);
+  return codes;
+};
+
+/**
+ * Fetch batch real-time stock quotes from Tencent Finance API (qt.gtimg.cn)
+ * Bypasses CORS using dynamic script tags.
+ */
+const fetchTencentStocks = async (codes) => {
+  const batchSize = 400;
+  const batches = [];
+  for (let i = 0; i < codes.length; i += batchSize) {
+    batches.push(codes.slice(i, i + batchSize));
+  }
+
+  const fetchBatch = (batch) => {
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      const qParam = batch.map(c => `s_${c}`).join(',');
+      script.src = `https://qt.gtimg.cn/q=${qParam}`;
+      script.onload = () => {
+        const data = [];
+        batch.forEach(code => {
+          const varName = `v_s_${code}`;
+          if (window[varName]) {
+            const raw = window[varName];
+            delete window[varName]; // Clean up to avoid memory leak
+            const parts = raw.split('~');
+            if (parts.length > 9) {
+              data.push({
+                f12: parts[2], // code
+                f14: parts[1], // name
+                f2: parts[3],  // price
+                f3: parts[5],  // change%
+                f20: (parseFloat(parts[9]) * 100000000).toString() // market cap (convert hundred million to yuan)
+              });
+            }
+          }
+        });
+        document.body.removeChild(script);
+        resolve(data);
+      };
+      script.onerror = () => {
+        try {
+          document.body.removeChild(script);
+        } catch (e) {}
+        resolve([]);
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  try {
+    const results = await Promise.all(batches.map(fetchBatch));
+    return results.flat();
+  } catch (err) {
+    console.error('Tencent API Fetch Error:', err);
+    return [];
+  }
+};
+
 /**
  * Main function to load stock heatmap data by mapping real-time quotes to local tree structure.
  * @param {String} marketFilter 'all' | 'sh' | 'sz' | 'bj' | 'kcb' | 'cyb'
@@ -162,8 +267,33 @@ const fetchAllStocksBatch = async (marketFilter = 'all', forceRefresh = false) =
  */
 export const fetchStockData = async (marketFilter = 'all', changeMode = 'day', forceRefresh = false) => {
   try {
-    // 1. Fetch real-time quotes filtered by the active market board (with optional cache bypass)
-    const rawStocksList = await fetchAllStocksBatch(marketFilter, forceRefresh);
+    let rawStocksList = [];
+    
+    // Attempt 1: Fetch from Tencent API (Primary)
+    const tencentCodes = getTencentCodesFromMapData(marketFilter);
+    const now = Date.now();
+    const cache = _tencentStocksCache[marketFilter];
+    
+    if (!forceRefresh && cache && (now - cache.time < CACHE_TTL_MS)) {
+      rawStocksList = cache.data;
+    } else if (tencentCodes.length > 0) {
+      console.log(`Attempting primary fetch from Tencent API for ${tencentCodes.length} stocks...`);
+      const tencentData = await fetchTencentStocks(tencentCodes);
+      if (tencentData && tencentData.length > 0) {
+        _tencentStocksCache[marketFilter] = {
+          data: tencentData,
+          time: now
+        };
+        rawStocksList = tencentData;
+        console.log(`Tencent API fetch succeeded: loaded ${rawStocksList.length} quotes.`);
+      }
+    }
+
+    // Attempt 2: Fallback to East Money API if Tencent is empty or failed
+    if (!rawStocksList || rawStocksList.length === 0) {
+      console.warn('Tencent API failed/empty, falling back to East Money API...');
+      rawStocksList = await fetchAllStocksBatch(marketFilter, forceRefresh);
+    }
     
     // Create a fast map lookup: code -> quote data
     const stockMap = new Map();
