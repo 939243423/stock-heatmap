@@ -160,60 +160,101 @@ const updateChart = (data) => {
   // Deep clone data to modify changes for replay simulation
   let displayData = JSON.parse(JSON.stringify(data));
   
-  displayData = displayData.map(sector => {
-    const updatedStocks = sector.children.map(stock => {
-      const originalChange = stock.value[1];
-      const scaleVal = stock.value[0];
-      const priceVal = stock.value[2];
+  // Recursive tree processing to color all leaves (stocks) and update averages
+  const processNode = (node, scale) => {
+    const isLeaf = !node.children;
+    
+    if (isLeaf) {
+      const originalChange = node.value[1];
+      const scaleVal = node.value[0];
+      const priceVal = node.value[2];
       
-      // Calculate simulated change: scale original + add time-dependent micro-volatility
       let simulatedChange = originalChange * scale;
       if (scale < 1.0) {
-        const seedVal = seedRandomLocal(stock.code || stock.name);
+        const seedVal = seedRandomLocal(node.code || node.name);
         const variance = (seedVal - 0.5) * 0.4 * (1 - scale);
         simulatedChange += variance;
       }
       
       return {
-        ...stock,
+        ...node,
         value: [scaleVal, parseFloat(simulatedChange.toFixed(2)), priceVal],
         itemStyle: {
           color: generateHSLColor(simulatedChange)
         }
       };
+    }
+    
+    // Node has children (sector / subsector)
+    const updatedChildren = node.children.map(child => processNode(child, scale));
+    
+    // Re-calculate weighted average change
+    let totalScale = 0;
+    let weightedChangeSum = 0;
+    
+    updatedChildren.forEach(child => {
+      const childIsLeaf = !child.children;
+      const childScale = childIsLeaf ? child.value[0] : child.value[1];
+      const childChange = childIsLeaf ? child.value[1] : child.value[0];
+      
+      totalScale += childScale;
+      weightedChangeSum += childChange * childScale;
     });
     
-    // Re-calculate sector average change
-    const totalSectorScale = updatedStocks.reduce((sum, s) => sum + s.value[0], 0);
-    const totalSectorChangeWeight = updatedStocks.reduce((sum, s) => sum + s.value[1] * s.value[0], 0);
-    const sectorAvg = totalSectorScale > 0 ? (totalSectorChangeWeight / totalSectorScale) : 0;
+    const avgChange = totalScale > 0 ? (weightedChangeSum / totalScale) : 0;
     
     return {
-      ...sector,
-      value: [parseFloat(sectorAvg.toFixed(2)), totalSectorScale], // [avgChange%, scale]
-      children: updatedStocks
+      ...node,
+      value: [parseFloat(avgChange.toFixed(2)), totalScale],
+      children: updatedChildren
     };
-  });
-  
-  // Apply search query filter if active
+  };
+
+  // Recursive tree filter
+  const filterTree = (node, query) => {
+    const isLeaf = !node.children;
+    if (isLeaf) {
+      const nameMatch = node.name && node.name.toLowerCase().includes(query);
+      const codeMatch = node.code && node.code.toLowerCase().includes(query);
+      return (nameMatch || codeMatch) ? node : null;
+    }
+    
+    const filteredChildren = node.children
+      .map(child => filterTree(child, query))
+      .filter(Boolean);
+      
+    if (filteredChildren.length > 0) {
+      let totalScale = 0;
+      let weightedChangeSum = 0;
+      
+      filteredChildren.forEach(child => {
+        const childIsLeaf = !child.children;
+        const childScale = childIsLeaf ? child.value[0] : child.value[1];
+        const childChange = childIsLeaf ? child.value[1] : child.value[0];
+        
+        totalScale += childScale;
+        weightedChangeSum += childChange * childScale;
+      });
+      
+      const avgChange = totalScale > 0 ? (weightedChangeSum / totalScale) : 0;
+      
+      return {
+        ...node,
+        value: [parseFloat(avgChange.toFixed(2)), totalScale],
+        children: filteredChildren
+      };
+    }
+    
+    return null;
+  };
+
+  // Process coloring first
+  displayData = displayData.map(sector => processNode(sector, scale));
+
+  // Apply search query filter recursively if active
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase();
-    displayData = displayData.map(sector => {
-      const matchingStocks = sector.children.filter(stock => 
-        stock.name.toLowerCase().includes(query) ||
-        (stock.code && stock.code.includes(query))
-      );
-      if (matchingStocks.length > 0) {
-        const totalScale = matchingStocks.reduce((sum, s) => sum + s.value[0], 0);
-        const sectorChange = matchingStocks.reduce((sum, s) => sum + s.value[1] * s.value[0], 0) / totalScale;
-        return {
-          ...sector,
-          children: matchingStocks,
-          value: [parseFloat(sectorChange.toFixed(2)), totalScale] 
-        };
-      }
-      return null;
-    }).filter(Boolean);
+    displayData = displayData.map(sector => filterTree(sector, query)).filter(Boolean);
   }
 
   const options = {

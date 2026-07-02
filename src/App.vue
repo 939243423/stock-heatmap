@@ -28,6 +28,8 @@ watch(activeView, () => {
 const indices = ref([]);
 const selectedStock = ref(null);
 const showDrawer = ref(false);
+const showScreenshotModal = ref(false);
+const screenshotImgUrl = ref('');
 const activeTab = ref('min'); 
 const lastUpdatedTime = ref('--:--:--');
 const heatmapRef = ref(null);
@@ -180,23 +182,64 @@ const shareScreenshot = () => {
   const buttonsToHide = document.querySelectorAll('.screenshot-hide');
   buttonsToHide.forEach(btn => btn.style.display = 'none');
   
+  // Temporarily monkey-patch getComputedStyle to avoid html2canvas crashing on oklch colors
+  const originalGetComputedStyle = window.getComputedStyle;
+  window.getComputedStyle = function (el, pseudoElt) {
+    const styles = originalGetComputedStyle(el, pseudoElt);
+    return new Proxy(styles, {
+      get(target, prop) {
+        if (prop === 'getPropertyValue') {
+          return function(propertyName) {
+            const value = target.getPropertyValue(propertyName);
+            if (typeof value === 'string' && value.includes('oklch')) {
+              return value.replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)');
+            }
+            return value;
+          };
+        }
+        const value = Reflect.get(target, prop);
+        if (typeof value === 'function') {
+          return value.bind(target);
+        }
+        if (typeof value === 'string' && value.includes('oklch')) {
+          return value.replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)');
+        }
+        return value;
+      }
+    });
+  };
+  
   setTimeout(() => {
     html2canvas(target, {
       useCORS: true,
       backgroundColor: '#080d1a',
       scale: 2 // high resolution
     }).then(canvas => {
+      // Restore original getComputedStyle
+      window.getComputedStyle = originalGetComputedStyle;
+      
+      const imgUrl = canvas.toDataURL('image/png');
+      screenshotImgUrl.value = imgUrl;
+      showScreenshotModal.value = true;
+
       const link = document.createElement('a');
       const d = new Date();
       const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
       link.download = `大盘云图-${dateStr}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = imgUrl;
+      
+      // Append, click, and remove to guarantee download works on all desktop browsers
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       
       // Restore UI elements
       buttonsToHide.forEach(btn => btn.style.display = '');
       isRefreshing.value = false;
     }).catch(err => {
+      // Restore original getComputedStyle
+      window.getComputedStyle = originalGetComputedStyle;
+      
       console.error('Screenshot capturing failed:', err);
       buttonsToHide.forEach(btn => btn.style.display = '');
       isRefreshing.value = false;
@@ -851,6 +894,48 @@ onUnmounted(() => {
             class="bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] px-6 py-1.5 rounded-lg transition-all"
           >
             我知道了
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screenshot Modal -->
+    <div 
+      v-if="showScreenshotModal" 
+      class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 transition-opacity duration-300"
+      @click.self="showScreenshotModal = false"
+    >
+      <div class="bg-[#0b1224] border border-slate-800/80 p-5 rounded-2xl max-w-2xl w-full flex flex-col items-center shadow-2xl relative transition-transform duration-300 scale-100">
+        <!-- Close Button -->
+        <button 
+          @click="showScreenshotModal = false" 
+          class="absolute top-4 right-4 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 p-1.5 rounded-lg transition-all"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        
+        <h3 class="text-sm font-bold text-white tracking-widest mb-3 text-center">📸 截图生成成功</h3>
+        
+        <!-- Image Container -->
+        <div class="w-full overflow-auto max-h-[60vh] border border-slate-800/60 rounded-xl bg-slate-950 flex justify-center items-center p-2 mb-4">
+          <img :src="screenshotImgUrl" class="max-w-full h-auto object-contain rounded" alt="大盘云图截图" />
+        </div>
+        
+        <!-- Tips -->
+        <div class="text-[11px] text-slate-400 space-y-1 mb-4 w-full text-center leading-relaxed">
+          <p class="text-emerald-400 font-medium">已为您自动触发本地下载！</p>
+          <p>若下载未启动，电脑端用户可**右键图片另存为/复制**，移动端用户可**长按图片进行保存/分享**。</p>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="flex gap-3">
+          <button 
+            @click="showScreenshotModal = false" 
+            class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium text-[11px] px-6 py-2 rounded-lg transition-all"
+          >
+            关闭预览
           </button>
         </div>
       </div>
