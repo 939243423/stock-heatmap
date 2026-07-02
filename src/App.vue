@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import html2canvas from 'html2canvas';
 import StockHeatmap from './components/StockHeatmap.vue';
 import MarketWidth from './components/MarketWidth.vue';
@@ -30,6 +30,14 @@ const selectedStock = ref(null);
 const showDrawer = ref(false);
 const showScreenshotModal = ref(false);
 const screenshotImgUrl = ref('');
+const captureChartImg = ref('');
+
+const activeViewName = computed(() => {
+  if (activeView.value === 'stock') return 'A股全景';
+  if (activeView.value === 'us') return '美股全景';
+  if (activeView.value === 'width') return '全市场宽度';
+  return '行情看板';
+});
 const activeTab = ref('min'); 
 const lastUpdatedTime = ref('--:--:--');
 const heatmapRef = ref(null);
@@ -173,6 +181,84 @@ const handleSendDanmaku = () => {
 
 // HTML5 Screenshot Share
 const shareScreenshot = () => {
+  if (activeView.value === 'stock' || activeView.value === 'us') {
+    // 1. Get high-resolution ECharts base64 image data
+    if (heatmapRef.value && typeof heatmapRef.value.getChartDataURL === 'function') {
+      const dataURL = heatmapRef.value.getChartDataURL();
+      if (dataURL) {
+        captureChartImg.value = dataURL;
+        isRefreshing.value = true;
+        
+        // 2. Let Vue render the updated offscreen template, then capture it
+        setTimeout(() => {
+          const exportCard = document.getElementById('screenshot-export-card');
+          if (!exportCard) {
+            isRefreshing.value = false;
+            return;
+          }
+          
+          // Apply getComputedStyle patch just in case
+          const originalGetComputedStyle = window.getComputedStyle;
+          window.getComputedStyle = function (el, pseudoElt) {
+            const styles = originalGetComputedStyle(el, pseudoElt);
+            return new Proxy(styles, {
+              get(target, prop) {
+                if (prop === 'getPropertyValue') {
+                  return function(propertyName) {
+                    const value = target.getPropertyValue(propertyName);
+                    if (typeof value === 'string' && value.includes('oklch')) {
+                      return value.replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)');
+                    }
+                    return value;
+                  };
+                }
+                const value = Reflect.get(target, prop);
+                if (typeof value === 'function') {
+                  return value.bind(target);
+                }
+                if (typeof value === 'string' && value.includes('oklch')) {
+                  return value.replace(/oklch\([^)]+\)/g, 'rgba(0,0,0,0)');
+                }
+                return value;
+              }
+            });
+          };
+          
+          html2canvas(exportCard, {
+            useCORS: true,
+            backgroundColor: '#080d1a',
+            scale: 2
+          }).then(canvas => {
+            window.getComputedStyle = originalGetComputedStyle;
+            
+            const imgUrl = canvas.toDataURL('image/png');
+            screenshotImgUrl.value = imgUrl;
+            showScreenshotModal.value = true;
+
+            const link = document.createElement('a');
+            const d = new Date();
+            const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+            link.download = `大盘云图-${activeViewName.value}-${dateStr}.png`;
+            link.href = imgUrl;
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            isRefreshing.value = false;
+          }).catch(err => {
+            window.getComputedStyle = originalGetComputedStyle;
+            console.error('Screenshot capturing failed:', err);
+            isRefreshing.value = false;
+            alert('截图生成失败，请稍后重试！');
+          });
+        }, 150);
+        return;
+      }
+    }
+  }
+
+  // Fallback / Market Width capturing (direct container capture)
   const target = document.getElementById('heatmap-capture-area');
   if (!target) return;
   
@@ -182,7 +268,6 @@ const shareScreenshot = () => {
   const buttonsToHide = document.querySelectorAll('.screenshot-hide');
   buttonsToHide.forEach(btn => btn.style.display = 'none');
   
-  // Temporarily monkey-patch getComputedStyle to avoid html2canvas crashing on oklch colors
   const originalGetComputedStyle = window.getComputedStyle;
   window.getComputedStyle = function (el, pseudoElt) {
     const styles = originalGetComputedStyle(el, pseudoElt);
@@ -210,12 +295,18 @@ const shareScreenshot = () => {
   };
   
   setTimeout(() => {
+    // Explicit sizing for html2canvas to prevent viewport offset and cropping issues
     html2canvas(target, {
       useCORS: true,
       backgroundColor: '#080d1a',
-      scale: 2 // high resolution
+      scale: 2,
+      width: target.offsetWidth,
+      height: target.offsetHeight,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: target.offsetWidth,
+      windowHeight: target.offsetHeight
     }).then(canvas => {
-      // Restore original getComputedStyle
       window.getComputedStyle = originalGetComputedStyle;
       
       const imgUrl = canvas.toDataURL('image/png');
@@ -225,21 +316,17 @@ const shareScreenshot = () => {
       const link = document.createElement('a');
       const d = new Date();
       const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-      link.download = `大盘云图-${dateStr}.png`;
+      link.download = `大盘云图-${activeViewName.value}-${dateStr}.png`;
       link.href = imgUrl;
       
-      // Append, click, and remove to guarantee download works on all desktop browsers
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
-      // Restore UI elements
       buttonsToHide.forEach(btn => btn.style.display = '');
       isRefreshing.value = false;
     }).catch(err => {
-      // Restore original getComputedStyle
       window.getComputedStyle = originalGetComputedStyle;
-      
       console.error('Screenshot capturing failed:', err);
       buttonsToHide.forEach(btn => btn.style.display = '');
       isRefreshing.value = false;
@@ -554,6 +641,7 @@ onUnmounted(() => {
         <!-- US Stocks Heatmap -->
         <USHeatmap 
           v-else-if="activeView === 'us'"
+          ref="heatmapRef"
           :searchQuery="debouncedSearchQuery" 
           :showAllPercent="showAllPercent"
           @select-stock="handleSelectStock"
@@ -895,6 +983,60 @@ onUnmounted(() => {
           >
             我知道了
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden Capture Template for clean exports -->
+    <div class="fixed top-[-9999px] left-[-9999px] pointer-events-none select-none">
+      <div id="screenshot-export-card" class="w-[960px] bg-[#080d1a] border-4 border-slate-800/60 p-8 rounded-3xl flex flex-col text-slate-100 font-sans">
+        <!-- Header Brand -->
+        <div class="flex justify-between items-end border-b border-slate-800/60 pb-5 mb-5">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <div class="w-2.5 h-7 bg-red-500 rounded"></div>
+              <h2 class="text-2xl font-black tracking-widest text-white">大盘云图 · {{ activeViewName }}</h2>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-2 font-semibold tracking-wider">实时行情监控与智能情绪诊断系统</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">更新时间 (GMT+8)</p>
+            <p class="text-xs font-bold text-slate-300 mt-1 font-mono">{{ currentDate }} {{ currentTime }}</p>
+          </div>
+        </div>
+
+        <!-- Market Index Row (Only for A-share view to prevent layout mismatches) -->
+        <div v-if="activeView === 'stock'" class="grid grid-cols-3 gap-4 mb-6">
+          <div 
+            v-for="index in indices.slice(0, 3)" 
+            :key="index.f57" 
+            class="bg-[#0b1224] border border-slate-800/60 rounded-2xl p-4 flex flex-col shadow-inner"
+          >
+            <span class="text-xs font-semibold text-slate-400">{{ index.f58 }}</span>
+            <span 
+              class="text-xl font-black mt-2 font-mono"
+              :class="index.f170 > 0 ? 'text-red-500' : (index.f170 < 0 ? 'text-emerald-500' : 'text-slate-400')"
+            >
+              {{ index.f43?.toFixed(2) }}
+            </span>
+            <span 
+              class="text-xs font-bold mt-1 font-mono"
+              :class="index.f170 > 0 ? 'text-red-500' : (index.f170 < 0 ? 'text-emerald-500' : 'text-slate-400')"
+            >
+              {{ index.f170 > 0 ? '+' : '' }}{{ index.f170?.toFixed(2) }}%
+            </span>
+          </div>
+        </div>
+
+        <!-- Main Heatmap Body Container -->
+        <div class="w-full bg-[#080d1a] border border-slate-800/60 rounded-2xl p-1 shadow-2xl relative">
+          <img :src="captureChartImg" class="w-full h-auto object-contain rounded-xl" alt="Heatmap Snapshot" />
+        </div>
+
+        <!-- Footer signature -->
+        <div class="mt-6 pt-4 border-t border-slate-800/60 flex justify-between items-center text-[10px] text-slate-500 font-semibold">
+          <span>官网防丢地址：dpyt.com / dpyt.cc</span>
+          <span>仅供参考，不作为投资决策建议。大盘云图拥有最终解释权。</span>
         </div>
       </div>
     </div>

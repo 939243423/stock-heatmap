@@ -513,7 +513,8 @@ onUnmounted(() => {
 
 defineExpose({
   triggerManualRefresh,
-  sendDanmaku
+  sendDanmaku,
+  getChartDataURL: () => myChart ? myChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#080d1a' }) : null
 });
 </script>
 

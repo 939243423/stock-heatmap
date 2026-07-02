@@ -256,6 +256,10 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   myChart && myChart.dispose();
 });
+
+defineExpose({
+  getChartDataURL: () => myChart ? myChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#080d1a' }) : null
+});
 </script>
 
 <template>
