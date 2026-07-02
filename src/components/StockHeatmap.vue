@@ -373,17 +373,20 @@ const updateChart = (data) => {
           show: true,
           bottom: 4, 
           left: 'center',
-          height: 22,
+          height: 20,
           emptyItemWidth: 25,
           itemStyle: {
-            color: 'rgba(30, 41, 59, 0.9)', 
-            borderColor: 'rgba(255, 255, 255, 0.1)',
+            color: 'rgba(15, 23, 42, 0.7)', 
+            borderColor: 'rgba(255, 255, 255, 0.06)',
             borderWidth: 1,
-            shadowBlur: 2
+            borderRadius: 6,
+            shadowBlur: 0
           },
           textStyle: {
-            color: '#cbd5e1',
-            fontSize: 10
+            color: '#94a3b8',
+            fontSize: 9,
+            fontWeight: 'bold',
+            fontFamily: 'system-ui, -apple-system, sans-serif'
           }
         },
         levels: [

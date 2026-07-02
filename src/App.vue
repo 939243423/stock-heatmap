@@ -24,7 +24,9 @@ watch(searchQuery, (newVal) => {
 watch(activeView, () => {
   showDrawer.value = false;
   selectedStock.value = null;
+  showMobileSidebar.value = false;
 });
+const showMobileSidebar = ref(false);
 const indices = ref([]);
 const selectedStock = ref(null);
 const showDrawer = ref(false);
@@ -352,16 +354,28 @@ onUnmounted(() => {
 <template>
   <div class="h-screen w-screen flex flex-row bg-[#080d1a] text-slate-100 overflow-hidden font-sans selection:bg-red-500/30">
     
+    <!-- Mobile Sidebar Drawer Backdrop -->
+    <div 
+      v-if="showMobileSidebar" 
+      @click="showMobileSidebar = false"
+      class="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-all duration-300"
+    ></div>
+
     <!-- LEFT SIDEBAR PANEL -->
-    <aside class="w-48 bg-[#0b1224] border-r border-slate-800/80 flex flex-col shrink-0 z-30 select-none">
+    <aside 
+      class="bg-[#0b1224] border-r border-slate-800/80 flex flex-col z-50 select-none transition-transform duration-300 ease-out
+             md:static md:translate-x-0 md:w-48 md:h-full md:flex shrink-0
+             fixed top-0 left-0 h-screen w-64"
+      :class="showMobileSidebar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+    >
       
       <!-- Logo -->
-      <div class="p-4 border-b border-slate-800/60">
-        <div class="flex items-center gap-2">
-          <div class="w-1.5 h-6 bg-[#ef4444] rounded"></div>
+      <div class="p-4 border-b border-slate-800/60 bg-gradient-to-b from-slate-950/20 to-transparent">
+        <div class="flex items-center gap-2.5">
+          <div class="w-1.5 h-6 bg-gradient-to-b from-red-500 via-rose-500 to-orange-500 rounded shadow-[0_0_12px_rgba(239,68,68,0.6)] animate-pulse"></div>
           <div>
-            <h1 class="text-base font-black tracking-widest text-white leading-none">大盘云图</h1>
-            <p class="text-[9px] text-slate-500 mt-1 font-semibold">dapanyuntu.com</p>
+            <h1 class="text-base font-black tracking-widest text-white leading-none bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-300">大盘云图</h1>
+            <p class="text-[9px] text-red-500/80 mt-1 font-semibold tracking-wider font-mono">dapanyuntu.com</p>
           </div>
         </div>
       </div>
@@ -394,36 +408,45 @@ onUnmounted(() => {
         <!-- A-Share Heatmap -->
         <button 
           @click="activeView = 'stock'"
-          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2 border font-semibold"
+          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2.5 border font-semibold hover:translate-x-0.5"
           :class="activeView === 'stock'
-            ? 'bg-red-500/10 border-red-500/30 text-red-400' 
+            ? 'bg-red-500/10 border-red-500/30 text-red-400 shadow-[inset_0_1px_1px_rgba(239,68,68,0.15)] shadow-red-500/5' 
             : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'"
         >
-          <span class="w-1.5 h-1.5 rounded-full" :class="activeView === 'stock' ? 'bg-red-400' : 'bg-slate-600'"></span>
+          <!-- Grid Icon -->
+          <svg class="w-4 h-4 shrink-0 transition-transform" :class="activeView === 'stock' ? 'text-red-400' : 'text-slate-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+          </svg>
           A股行情云图
         </button>
 
         <!-- Market Width -->
         <button 
           @click="activeView = 'width'"
-          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2 border font-semibold"
+          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2.5 border font-semibold hover:translate-x-0.5"
           :class="activeView === 'width'
-            ? 'bg-red-500/10 border-red-500/30 text-red-400' 
+            ? 'bg-red-500/10 border-red-500/30 text-red-400 shadow-[inset_0_1px_1px_rgba(239,68,68,0.15)] shadow-red-500/5' 
             : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'"
         >
-          <span class="w-1.5 h-1.5 rounded-full" :class="activeView === 'width' ? 'bg-red-400' : 'bg-slate-600'"></span>
+          <!-- Chart Line Icon -->
+          <svg class="w-4 h-4 shrink-0" :class="activeView === 'width' ? 'text-red-400' : 'text-slate-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
           全市场宽度
         </button>
 
         <!-- US Stock Heatmap -->
         <button 
           @click="activeView = 'us'"
-          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2 border font-semibold"
+          class="w-full text-left px-3 py-2 rounded-xl text-xs transition-all flex items-center gap-2.5 border font-semibold hover:translate-x-0.5"
           :class="activeView === 'us'
-            ? 'bg-red-500/10 border-red-500/30 text-red-400' 
+            ? 'bg-red-500/10 border-red-500/30 text-red-400 shadow-[inset_0_1px_1px_rgba(239,68,68,0.15)] shadow-red-500/5' 
             : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'"
         >
-          <span class="w-1.5 h-1.5 rounded-full" :class="activeView === 'us' ? 'bg-red-400' : 'bg-slate-600'"></span>
+          <!-- Globe Icon -->
+          <svg class="w-4 h-4 shrink-0" :class="activeView === 'us' ? 'text-red-400' : 'text-slate-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path>
+          </svg>
           美股成分云图
         </button>
       </div>
@@ -437,7 +460,7 @@ onUnmounted(() => {
           <button 
             v-for="tab in marketTabs" 
             :key="tab.value"
-            @click="activeMarket = tab.value"
+            @click="activeMarket = tab.value; showMobileSidebar = false"
             class="w-full text-left px-3 py-1.5 rounded-lg text-[11px] transition-all flex items-center justify-between group border"
             :class="activeMarket === tab.value 
               ? 'bg-slate-900 border-slate-800 text-slate-200 font-bold' 
@@ -457,14 +480,14 @@ onUnmounted(() => {
             <span class="text-[10px] text-slate-500 block mb-1">指标维度</span>
             <div class="flex bg-slate-950/60 p-0.5 rounded border border-slate-850">
               <button 
-                @click="changeMode = 'day'"
+                @click="changeMode = 'day'; showMobileSidebar = false"
                 class="flex-1 text-[9px] py-1 rounded font-bold transition-all"
                 :class="changeMode === 'day' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'"
               >
                 涨跌幅
               </button>
               <button 
-                @click="changeMode = 'week'"
+                @click="changeMode = 'week'; showMobileSidebar = false"
                 class="flex-1 text-[9px] py-1 rounded font-bold transition-all"
                 :class="changeMode === 'week' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'"
               >
@@ -515,20 +538,20 @@ onUnmounted(() => {
       <!-- Bottom Actions -->
       <div class="p-3 border-t border-slate-800/60 bg-slate-950/20 text-center space-y-1.5">
         <button 
-          @click="showGuideModal = true" 
+          @click="showGuideModal = true; showMobileSidebar = false" 
           class="w-full text-[10px] text-slate-400 hover:text-white bg-slate-900 border border-slate-800/80 py-1 rounded-lg transition-all"
         >
           查看使用指南
         </button>
         <div class="grid grid-cols-2 gap-1.5">
           <button 
-            @click="showSponsorModal = true" 
+            @click="showSponsorModal = true; showMobileSidebar = false" 
             class="text-[9px] font-bold text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 border border-orange-500/20 hover:border-orange-500 py-1 rounded-lg transition-all"
           >
             友情赞助
           </button>
           <button 
-            @click="shareScreenshot" 
+            @click="shareScreenshot(); showMobileSidebar = false" 
             class="text-[9px] font-bold text-red-400 hover:text-white bg-red-500/10 hover:bg-red-500 border border-red-500/20 hover:border-red-500 py-1 rounded-lg transition-all"
           >
             截图分享
@@ -540,38 +563,118 @@ onUnmounted(() => {
     <!-- RIGHT MAIN AREA -->
     <div id="heatmap-capture-area" class="flex-1 flex flex-col h-full overflow-hidden relative">
       
-      <!-- TOP INDEXES ROW -->
-      <header class="flex-none h-12 bg-[#0f172a]/95 border-b border-slate-800/60 flex items-center justify-between px-4 sm:px-6 z-20 gap-4 overflow-x-auto flex-nowrap scrollbar-none shadow-md">
+      <!-- TOP INDEXES ROW / HEADER -->
+      <header class="flex-none bg-[#0f172a]/95 border-b border-slate-800/60 z-20 shadow-md flex flex-col md:flex-row md:h-12 md:items-center justify-between px-3 md:px-6 py-2 md:py-0 select-none">
         
-        <!-- Market Tickers -->
-        <div class="flex items-center gap-4 md:gap-5 flex-1 min-w-0">
+        <!-- Mobile Top Row: Hamburger, Logo & Right Controls -->
+        <div class="flex items-center justify-between w-full md:hidden mb-2">
+          <!-- Left: Hamburger & Logo -->
+          <div class="flex items-center gap-2.5">
+            <button 
+              @click="showMobileSidebar = true" 
+              class="p-1.5 rounded-lg bg-slate-900 border border-slate-850 text-slate-400 hover:text-white shrink-0 active:scale-95 transition-all focus:outline-none"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-orange-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.2)]">大盘云图</span>
+              <span class="text-[8px] font-bold text-red-500 bg-red-500/10 px-1 py-0.2 rounded border border-red-500/20 font-mono">PRO</span>
+            </div>
+          </div>
+
+          <!-- Right: Search & Refresh -->
+          <div class="flex items-center gap-2">
+            <!-- Search Bar -->
+            <div v-if="activeView !== 'width'" class="relative w-32 sm:w-44 group screenshot-hide">
+              <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                <svg class="h-3.5 w-3.5 text-slate-500 group-focus-within:text-red-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input 
+                v-model="searchQuery"
+                type="text" 
+                placeholder="搜索股票..." 
+                class="block w-full pl-8 pr-2 py-1 border border-slate-800/80 rounded-lg leading-5 bg-slate-900/60 text-slate-200 placeholder-slate-600 focus:outline-none focus:bg-slate-900 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 text-[10px] transition-all"
+              />
+            </div>
+            <!-- Refresh Button -->
+            <button 
+              @click="triggerManualRefresh"
+              class="bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700/80 p-1.5 rounded-lg text-slate-300 hover:text-white transition-all flex items-center justify-center shrink-0 screenshot-hide"
+              :class="{ 'pointer-events-none opacity-50': isRefreshing }"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                class="h-3.5 w-3.5" 
+                :class="{ 'animate-spin': isRefreshing }"
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                stroke-width="2.5" 
+                stroke-linecap="round" 
+                stroke-linejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Desktop Hamburger Menu (hidden on mobile, shown on desktop md:block) -->
+        <button 
+          @click="showMobileSidebar = true" 
+          class="hidden md:block lg:hidden p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white shrink-0 hover:border-slate-700/60 transition-all focus:outline-none mr-3"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+
+        <!-- Market Tickers (Scrollable container - Full width on mobile, middle flex on desktop) -->
+        <div class="w-full md:flex-1 flex items-center gap-3 py-1.5 md:py-1 overflow-x-auto scrollbar-none border-t border-slate-850 md:border-t-0 pt-2 md:pt-0">
           <div 
             v-for="index in indices" 
             :key="index.f57" 
-            class="flex items-center gap-1.5 whitespace-nowrap text-xs shrink-0"
+            class="flex items-center gap-2.5 whitespace-nowrap text-xs shrink-0 bg-slate-900/40 border border-slate-850 rounded-xl px-3 py-1 hover:border-slate-700/50 hover:bg-slate-900/80 transition-all select-none shadow-sm cursor-default"
           >
-            <span class="text-slate-400 font-semibold text-[11px]">{{ index.f58 }}</span>
-            <span class="font-bold text-slate-200 text-[11px]">{{ index.f43?.toFixed(2) }}</span>
+            <!-- Up/Down Pulsing Dot Indicator -->
+            <span class="relative flex h-1.5 w-1.5">
+              <span 
+                class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                :class="index.f170 > 0 ? 'bg-red-400' : (index.f170 < 0 ? 'bg-emerald-400' : 'bg-slate-400')"
+              ></span>
+              <span 
+                class="relative inline-flex rounded-full h-1.5 w-1.5"
+                :class="index.f170 > 0 ? 'bg-red-500' : (index.f170 < 0 ? 'bg-emerald-500' : 'bg-slate-500')"
+              ></span>
+            </span>
+            
+            <span class="text-slate-400 font-semibold text-[10px]">{{ index.f58 }}</span>
+            <span class="font-bold text-slate-200 text-[11px] font-mono">{{ index.f43?.toFixed(2) }}</span>
             <span 
-              class="text-[10px] font-bold"
+              class="text-[10px] font-black flex items-center font-mono"
               :class="index.f170 > 0 ? 'text-red-500' : (index.f170 < 0 ? 'text-emerald-500' : 'text-slate-400')"
             >
-              {{ index.f170 > 0 ? '+' : '' }}{{ index.f170?.toFixed(2) }}%
+              <span>{{ index.f170 > 0 ? '▲' : (index.f170 < 0 ? '▼' : '') }}</span>
+              <span class="ml-0.5">{{ index.f170 > 0 ? '+' : '' }}{{ index.f170?.toFixed(2) }}%</span>
             </span>
           </div>
-          <div v-if="indices.length === 0" class="text-xs text-slate-500 flex items-center gap-1.5 animate-pulse">
+          <div v-if="indices.length === 0" class="text-xs text-slate-500 flex items-center gap-1.5 animate-pulse shrink-0">
             <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
             正在加载大盘指数...
           </div>
         </div>
 
-        <!-- Search Bar, Clock & Action Controls -->
-        <div class="flex items-center gap-3 shrink-0">
-          
-          <!-- Search Bar (Only shown for heatmap views) -->
-          <div v-if="activeView !== 'width'" class="relative max-w-xs w-44 sm:w-48 group screenshot-hide">
+        <!-- Desktop Search Bar, Clock & Action Controls (Hidden on Mobile) -->
+        <div class="hidden md:flex items-center gap-3 shrink-0 ml-4">
+          <!-- Search Bar -->
+          <div v-if="activeView !== 'width'" class="relative w-44 lg:w-48 shrink-0 group screenshot-hide">
             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-              <svg class="h-3 w-3 text-slate-500 group-focus-within:text-red-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="h-3.5 w-3.5 text-slate-500 group-focus-within:text-red-500 transition-colors" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -596,11 +699,15 @@ onUnmounted(() => {
               xmlns="http://www.w3.org/2000/svg" 
               class="h-3.5 w-3.5" 
               :class="{ 'animate-spin': isRefreshing }"
-              fill="none" 
               viewBox="0 0 24 24" 
-              stroke="currentColor"
+              fill="none" 
+              stroke="currentColor" 
+              stroke-width="2.5" 
+              stroke-linecap="round" 
+              stroke-linejoin="round"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18v3" />
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
             </svg>
           </button>
 
@@ -664,10 +771,10 @@ onUnmounted(() => {
             v-for="time in timeSteps" 
             :key="time"
             @click="selectedTime = time"
-            class="px-2.5 py-0.5 rounded-md text-[10px] font-bold transition-all shrink-0 border"
+            class="px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all shrink-0 border hover:scale-105 active:scale-95 shadow-sm"
             :class="selectedTime === time 
-              ? 'bg-red-500/10 text-red-400 border-red-500/30' 
-              : 'bg-slate-900/60 border-slate-800/80 text-slate-500 hover:text-slate-300'"
+              ? 'bg-gradient-to-r from-red-500/20 to-rose-500/20 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)] font-black' 
+              : 'bg-slate-950/40 border-slate-800/80 text-slate-500 hover:text-slate-300 hover:border-slate-700/60'"
           >
             {{ time }}
           </button>
