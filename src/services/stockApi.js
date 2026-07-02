@@ -61,10 +61,16 @@ const seedRandom = (str) => {
   return (Math.abs(hash) % 1000) / 1000;
 };
 
+// Local cache to speed up tab switching between market filters
+let _stocksCache = null;
+let _stocksCacheTime = 0;
+const CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
 /**
  * Fetch all A-share quotes in a single large request
+ * @param {Boolean} forceRefresh - if true, bypass cache
  */
-const fetchAllStocksBatch = async () => {
+const fetchAllStocksBatch = async (forceRefresh = false) => {
   const params = {
     pn: 1,
     pz: 4500, // Fetch top 4500 stocks by market cap (covers almost all active stocks)
@@ -78,6 +84,13 @@ const fetchAllStocksBatch = async () => {
   }).toString();
 
   const url = `${API_BASE}?${queryString}`;
+  
+  // Return cached result if still fresh
+  const now = Date.now();
+  if (!forceRefresh && _stocksCache && (now - _stocksCacheTime < CACHE_TTL_MS)) {
+    return _stocksCache;
+  }
+
   try {
     const response = await fetchJsonp(url, {
       jsonpCallback: 'cb',
@@ -85,7 +98,9 @@ const fetchAllStocksBatch = async () => {
     });
     const json = await response.json();
     if (json && json.data && json.data.diff) {
-      return json.data.diff;
+      _stocksCache = json.data.diff;
+      _stocksCacheTime = Date.now();
+      return _stocksCache;
     }
     return [];
   } catch (error) {
@@ -99,10 +114,10 @@ const fetchAllStocksBatch = async () => {
  * @param {String} marketFilter 'all' | 'sh' | 'sz' | 'bj' | 'kcb' | 'cyb'
  * @param {String} changeMode 'day' | 'week'
  */
-export const fetchStockData = async (marketFilter = 'all', changeMode = 'day') => {
+export const fetchStockData = async (marketFilter = 'all', changeMode = 'day', forceRefresh = false) => {
   try {
-    // 1. Fetch real-time quotes in one single batch request
-    const rawStocksList = await fetchAllStocksBatch();
+    // 1. Fetch real-time quotes in one single batch request (with optional cache bypass)
+    const rawStocksList = await fetchAllStocksBatch(forceRefresh);
     
     // Create a fast map lookup: code -> quote data
     const stockMap = new Map();
@@ -138,13 +153,16 @@ export const fetchStockData = async (marketFilter = 'all', changeMode = 'day') =
               match = code.startsWith('00') || code.startsWith('30') || code.startsWith('20');
               break;
             case 'bj':
-              match = code.startsWith('43') || code.startsWith('83') || code.startsWith('87') || code.startsWith('88');
+              // BSE stocks use 920xxx prefix in mapData, plus legacy 43/83/87/88 prefixes
+              match = code.startsWith('920') || code.startsWith('43') || code.startsWith('83') || code.startsWith('87') || code.startsWith('88') || node.id.endsWith('.BJ');
               break;
             case 'kcb':
-              match = code.startsWith('68');
+              // STAR Market: codes starting with 688 (all 688xxx are STAR)
+              match = code.startsWith('688');
               break;
             case 'cyb':
-              match = code.startsWith('300');
+              // ChiNext: codes starting with 300, 301, or 302
+              match = code.startsWith('300') || code.startsWith('301') || code.startsWith('302');
               break;
             default:
               match = true;

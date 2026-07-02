@@ -33,6 +33,8 @@ const initChart = () => {
       if (now - lastSelectTime < 300) return; // Prevent double trigger
       if (params.data && params.data.code) {
         lastSelectTime = now;
+        // Immediately hide the tooltip so it doesn't overlap the details drawer
+        myChart.dispatchAction({ type: 'hideTip' });
         emit('select-stock', {
           name: params.name,
           code: params.data.code,
@@ -92,7 +94,7 @@ const updateChart = (data) => {
       borderWidth: 1,
       padding: [10, 14],
       textStyle: { color: '#f8fafc', fontSize: 13 },
-      extraCssText: 'backdrop-filter: blur(8px); border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); z-index: 99;',
+      extraCssText: 'backdrop-filter: blur(8px); border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); z-index: 25;',
       formatter: function (info) {
         if (!info || !info.value) return '';
         const value = info.value;
