@@ -385,7 +385,7 @@ const updateChart = (data) => {
   };
 
   myChart.hideLoading();
-  myChart.setOption(options);
+  myChart.setOption(options, { notMerge: true });
 };
 
 const startAutoRefresh = () => {

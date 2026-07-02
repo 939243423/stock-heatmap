@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import html2canvas from 'html2canvas';
 import StockHeatmap from './components/StockHeatmap.vue';
 import MarketWidth from './components/MarketWidth.vue';
@@ -11,6 +11,20 @@ const activeView = ref('stock'); // 'stock' | 'width' | 'us'
 const changeMode = ref('day'); // 'day' | 'week'
 
 const searchQuery = ref('');
+const debouncedSearchQuery = ref('');
+let debounceTimer = null;
+
+watch(searchQuery, (newVal) => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    debouncedSearchQuery.value = newVal;
+  }, 300);
+});
+
+watch(activeView, () => {
+  showDrawer.value = false;
+  selectedStock.value = null;
+});
 const indices = ref([]);
 const selectedStock = ref(null);
 const showDrawer = ref(false);
@@ -479,7 +493,7 @@ onUnmounted(() => {
         <StockHeatmap 
           v-if="activeView === 'stock'"
           ref="heatmapRef"
-          :searchQuery="searchQuery" 
+          :searchQuery="debouncedSearchQuery" 
           :marketFilter="activeMarket"
           :selectedTime="selectedTime"
           :showAllPercent="showAllPercent"
@@ -497,7 +511,7 @@ onUnmounted(() => {
         <!-- US Stocks Heatmap -->
         <USHeatmap 
           v-else-if="activeView === 'us'"
-          :searchQuery="searchQuery" 
+          :searchQuery="debouncedSearchQuery" 
           :showAllPercent="showAllPercent"
           @select-stock="handleSelectStock"
         />

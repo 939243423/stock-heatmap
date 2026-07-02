@@ -10,6 +10,8 @@ const showAiHelper = ref(false);
 const isScrolling = ref(false);
 let scrollInterval = null;
 const tableContainerRef = ref(null);
+const overboughtSectors = ref([]);
+const oversoldSectors = ref([]);
 
 const loadData = () => {
   isLoading.value = true;
@@ -18,6 +20,25 @@ const loadData = () => {
     dates.value = fetchedDates;
     widthData.value = fetchedData;
     isLoading.value = false;
+    
+    // Analyze overbought and oversold sectors dynamically
+    if (dates.value.length > 0) {
+      const lastDayIdx = dates.value.length - 1;
+      const overbought = [];
+      const oversold = [];
+      
+      fetchedData.forEach(row => {
+        const val = row.values[lastDayIdx];
+        if (val >= 80) {
+          overbought.push(row.industry);
+        } else if (val <= 25) {
+          oversold.push(row.industry);
+        }
+      });
+      
+      overboughtSectors.value = overbought;
+      oversoldSectors.value = oversold;
+    }
   }, 400);
 };
 
@@ -232,7 +253,12 @@ onMounted(() => {
             1. 极度超卖行业 (筑底区间 宽度 &lt; 25%)
           </p>
           <p class="text-slate-400 pl-3">
-            **医药生物、银行板块、有色金属**。这些板块当前大部分个股已经跌破MA20均线，市场成交量萎缩，宽度指标达到极端低值（低于20%）。历史回测表明该区域属于高安全边际的**筑底抄底区间**，适合中长期资金分批建仓。
+            <span v-if="oversoldSectors.length > 0" class="text-emerald-400 font-bold">
+              {{ oversoldSectors.join('、') }}
+            </span>
+            <span v-else class="text-slate-500">暂无极度超卖行业</span>。
+            <span v-if="oversoldSectors.length > 0">这些板块当前大部分个股已经跌破MA20均线，市场情绪冷淡，宽度指标处于历史偏低位置，属于安全边际较高的**筑底抄底区间**，适合分批建仓。</span>
+            <span v-else>当前市场各板块跌幅均未达到极端超卖状态，建议以稳健防御策略为主。</span>
           </p>
         </div>
 
@@ -242,7 +268,12 @@ onMounted(() => {
             2. 极度超买行业 (过热回调风险 &gt; 80%)
           </p>
           <p class="text-slate-400 pl-3">
-            **半导体、光伏设备、通信**。在近期题材炒作的带动下，板块内超过85%的股票站在MA20上方，出现明显的拥挤度上升和**超买信号**。建议短线投资者切勿盲目追高，警惕随时可能到来的获利盘抛压和均线回归修正。
+            <span v-if="overboughtSectors.length > 0" class="text-red-400 font-bold">
+              {{ overboughtSectors.join('、') }}
+            </span>
+            <span v-else class="text-slate-500">暂无极度超买行业</span>。
+            <span v-if="overboughtSectors.length > 0">在题材或资金带动下，这些板块的大部分股票已站在MA20上方，积累了较多获利盘，拥挤度偏高，发出**超买信号**。建议警惕获利盘随时抛压导致的回调风险，不盲目追高。</span>
+            <span v-else>目前全市场尚无行业处于极端超买过热状态，板块轮动较为温和。</span>
           </p>
         </div>
 

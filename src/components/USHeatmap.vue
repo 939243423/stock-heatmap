@@ -227,7 +227,7 @@ const updateChart = (data) => {
     ]
   };
 
-  myChart.setOption(options);
+  myChart.setOption(options, { notMerge: true });
 };
 
 const resetZoom = () => {

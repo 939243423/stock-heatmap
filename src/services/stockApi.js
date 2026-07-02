@@ -339,7 +339,7 @@ export const fetchUSStockData = () => {
         value: [stock.scale, stock.change, stock.price],
         labelShowType: 'full',
         itemStyle: {
-          color: generateHSLColor(stock.change)
+          color: generateHSLColor(stock.change, true)
         }
       };
     });
@@ -354,8 +354,8 @@ export const fetchUSStockData = () => {
   });
 };
 
-// Helper: Generate HSL color based on percentage change (Red is UP, Green is DOWN)
-function generateHSLColor(changePercent) {
+// Helper: Generate HSL color based on percentage change (Red is UP, Green is DOWN. For US, Green is UP, Red is DOWN)
+function generateHSLColor(changePercent, isUS = false) {
   if (changePercent === 0 || isNaN(changePercent)) {
     return 'hsl(215, 25%, 27%)'; // Slate-700 / dark slate gray for flat
   }
@@ -363,7 +363,10 @@ function generateHSLColor(changePercent) {
   const absVal = Math.abs(changePercent);
   const ratio = Math.min(absVal / 6, 1); // Clamp maximum intensity at 6% change
   
-  if (changePercent > 0) {
+  const isPositive = changePercent > 0;
+  const useRed = isUS ? !isPositive : isPositive;
+  
+  if (useRed) {
     // Red HSL: Hue = 356 (vibrant crimson red)
     const s = Math.round(60 + 35 * ratio);
     const l = Math.round(15 + 27 * ratio);
