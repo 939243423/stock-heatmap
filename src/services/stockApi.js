@@ -1,8 +1,8 @@
 import fetchJsonp from 'fetch-jsonp';
 import mapDataGlobal from './mapData_global.json';
 
-// East Money API Base URL for batch queries
-const API_BASE = 'https://push2.eastmoney.com/api/qt/clist/get';
+// East Money API Base URL for batch queries (using push2ex fallback host for higher stability)
+const API_BASE = 'https://push2ex.eastmoney.com/api/qt/clist/get';
 const COMMON_PARAMS = {
   ut: 'bd1d9ddb04089700cf9c27f6f7426281',
   fltt: '2',
@@ -28,7 +28,7 @@ export const fetchSingleStock = async (secid, fields = 'f57,f58,f43,f169,f170') 
     fields: fields
   };
   const queryString = new URLSearchParams(params).toString();
-  const url = `https://push2.eastmoney.com/api/qt/stock/get?${queryString}`;
+  const url = `https://push2ex.eastmoney.com/api/qt/stock/get?${queryString}`;
   try {
     const response = await fetchJsonp(url, {
       jsonpCallback: 'cb',
@@ -61,46 +61,92 @@ const seedRandom = (str) => {
   return (Math.abs(hash) % 1000) / 1000;
 };
 
-// Local cache to speed up tab switching between market filters
-let _stocksCache = null;
-let _stocksCacheTime = 0;
+// Local cache to speed up tab switching between market filters, keyed by marketFilter
+let _stocksCache = {};
 const CACHE_TTL_MS = 30 * 1000; // 30 seconds
 
 /**
- * Fetch all A-share quotes in a single large request
+ * Fetch A-share quotes dynamically filtered by active board tab to minimize traffic
+ * @param {String} marketFilter - 'all' | 'sh' | 'sz' | 'bj' | 'kcb' | 'cyb'
  * @param {Boolean} forceRefresh - if true, bypass cache
  */
-const fetchAllStocksBatch = async (forceRefresh = false) => {
-  const params = {
-    pn: 1,
-    pz: 4500, // Fetch top 4500 stocks by market cap (covers almost all active stocks)
-    fid: 'f20', // Sort by market cap
-    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048', // All A-shares filter
-    fields: 'f12,f14,f2,f3,f20'
-  };
-  const queryString = new URLSearchParams({
-    ...COMMON_PARAMS,
-    ...params
-  }).toString();
-
-  const url = `${API_BASE}?${queryString}`;
-  
+const fetchAllStocksBatch = async (marketFilter = 'all', forceRefresh = false) => {
   // Return cached result if still fresh
   const now = Date.now();
-  if (!forceRefresh && _stocksCache && (now - _stocksCacheTime < CACHE_TTL_MS)) {
-    return _stocksCache;
+  const cache = _stocksCache[marketFilter];
+  if (!forceRefresh && cache && (now - cache.time < CACHE_TTL_MS)) {
+    return cache.data;
+  }
+
+  // Map marketFilter to corresponding fs query and page count
+  // Using page size 1000. Clean single-market filters avoid empty responses.
+  let fs = '';
+  let pages = [1];
+
+  switch (marketFilter) {
+    case 'sh': // Shanghai Main Board + STAR Market
+      fs = 'm:1+t:2,m:1+t:23';
+      pages = [1, 2, 3]; // approx 2300 stocks
+      break;
+    case 'sz': // Shenzhen Main Board + ChiNext
+      fs = 'm:0+t:6,m:0+t:80';
+      pages = [1, 2, 3]; // approx 2800 stocks
+      break;
+    case 'bj': // Beijing Stock Exchange
+      fs = 'm:0+t:81+s:2048';
+      pages = [1]; // approx 250 stocks
+      break;
+    case 'kcb': // STAR Market only (highly targeted)
+      fs = 'm:1+t:23';
+      pages = [1]; // approx 570 stocks
+      break;
+    case 'cyb': // ChiNext only
+      fs = 'm:0+t:80';
+      pages = [1, 2]; // approx 1350 stocks
+      break;
+    case 'all':
+    default: // All A-shares combined
+      fs = 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048';
+      pages = [1, 2, 3, 4, 5, 6]; // approx 5300 stocks
+      break;
   }
 
   try {
-    const response = await fetchJsonp(url, {
-      jsonpCallback: 'cb',
-      timeout: 15000
-    });
-    const json = await response.json();
-    if (json && json.data && json.data.diff) {
-      _stocksCache = json.data.diff;
-      _stocksCacheTime = Date.now();
-      return _stocksCache;
+    const fetchPage = async (page) => {
+      const params = {
+        pn: page,
+        pz: 1000,
+        fid: 'f20', // Sort by market cap
+        fs: fs,
+        fields: 'f12,f14,f2,f3,f20'
+      };
+      const queryString = new URLSearchParams({
+        ...COMMON_PARAMS,
+        ...params
+      }).toString();
+
+      const url = `${API_BASE}?${queryString}`;
+      const response = await fetchJsonp(url, {
+        jsonpCallback: 'cb',
+        timeout: 15000
+      });
+      const json = await response.json();
+      if (json && json.data && json.data.diff) {
+        const diff = json.data.diff;
+        return Array.isArray(diff) ? diff : Object.values(diff);
+      }
+      return [];
+    };
+
+    const results = await Promise.all(pages.map(p => fetchPage(p)));
+    const allStocks = results.flat();
+
+    if (allStocks.length > 0) {
+      _stocksCache[marketFilter] = {
+        data: allStocks,
+        time: Date.now()
+      };
+      return allStocks;
     }
     return [];
   } catch (error) {
@@ -116,8 +162,8 @@ const fetchAllStocksBatch = async (forceRefresh = false) => {
  */
 export const fetchStockData = async (marketFilter = 'all', changeMode = 'day', forceRefresh = false) => {
   try {
-    // 1. Fetch real-time quotes in one single batch request (with optional cache bypass)
-    const rawStocksList = await fetchAllStocksBatch(forceRefresh);
+    // 1. Fetch real-time quotes filtered by the active market board (with optional cache bypass)
+    const rawStocksList = await fetchAllStocksBatch(marketFilter, forceRefresh);
     
     // Create a fast map lookup: code -> quote data
     const stockMap = new Map();

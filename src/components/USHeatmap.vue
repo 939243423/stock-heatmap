@@ -26,9 +26,53 @@ const initChart = () => {
   if (!myChart) {
     myChart = echarts.init(chartRef.value);
     
-    // Bind click and mousedown event to emit selected stock immediately on all devices
+    // Bind click event with drag detection to prevent mis-triggering on roam panning
     let lastSelectTime = 0;
+    let startX = 0;
+    let startY = 0;
+    let isDragging = false;
+
+    if (chartRef.value) {
+      chartRef.value.addEventListener('mousedown', (e) => {
+        startX = e.clientX;
+        startY = e.clientY;
+        isDragging = false;
+      });
+
+      chartRef.value.addEventListener('mouseup', (e) => {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 5) {
+          isDragging = true;
+        }
+      });
+
+      chartRef.value.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          isDragging = false;
+        }
+      }, { passive: true });
+
+      chartRef.value.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length > 0) {
+          const dx = e.changedTouches[0].clientX - startX;
+          const dy = e.changedTouches[0].clientY - startY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 5) {
+            isDragging = true;
+          }
+        }
+      }, { passive: true });
+    }
+
     const handleSelectStock = (params) => {
+      if (isDragging) {
+        isDragging = false;
+        return;
+      }
       const now = Date.now();
       if (now - lastSelectTime < 300) return; // Prevent double trigger
       if (params.data && params.data.code) {
@@ -45,7 +89,11 @@ const initChart = () => {
       }
     };
     myChart.on('click', handleSelectStock);
-    myChart.on('mousedown', handleSelectStock);
+
+    // Hide tooltip when mouse leaves the ECharts container
+    myChart.on('globalout', () => {
+      myChart.dispatchAction({ type: 'hideTip' });
+    });
   }
 
   loadData();

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { fetchMarketWidthData } from '../services/stockApi';
 
 const dates = ref([]);
@@ -97,10 +97,24 @@ const getCellTextColor = (val) => {
   return 'rgba(255, 255, 255, 0.85)';
 };
 
+const handleEscKey = (e) => {
+  if (e.key === 'Escape' || e.key === 'Esc') {
+    if (showAiHelper.value) {
+      showAiHelper.value = false;
+    }
+  }
+};
+
 onMounted(() => {
   loadData();
   // Auto-scroll to latest dates after loading
   setTimeout(handleBackToToday, 600);
+  window.addEventListener('keydown', handleEscKey);
+});
+
+onUnmounted(() => {
+  if (scrollInterval) clearInterval(scrollInterval);
+  window.removeEventListener('keydown', handleEscKey);
 });
 </script>
 

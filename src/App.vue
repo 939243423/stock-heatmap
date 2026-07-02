@@ -337,17 +337,35 @@ const shareScreenshot = () => {
   }, 300);
 };
 
+const handleEscKey = (e) => {
+  if (e.key === 'Escape' || e.key === 'Esc') {
+    if (showScreenshotModal.value) {
+      showScreenshotModal.value = false;
+    } else if (showSponsorModal.value) {
+      showSponsorModal.value = false;
+    } else if (showGuideModal.value) {
+      showGuideModal.value = false;
+    } else if (showDrawer.value) {
+      showDrawer.value = false;
+    } else if (showMobileSidebar.value) {
+      showMobileSidebar.value = false;
+    }
+  }
+};
+
 onMounted(() => {
   loadIndices();
   updateDateTime();
   
   clockTimer = setInterval(updateDateTime, 1000);
   indicesTimer = setInterval(loadIndices, 30000);
+  window.addEventListener('keydown', handleEscKey);
 });
 
 onUnmounted(() => {
   if (indicesTimer) clearInterval(indicesTimer);
   if (clockTimer) clearInterval(clockTimer);
+  window.removeEventListener('keydown', handleEscKey);
 });
 </script>
 
@@ -597,8 +615,17 @@ onUnmounted(() => {
                 v-model="searchQuery"
                 type="text" 
                 placeholder="搜索股票..." 
-                class="block w-full pl-8 pr-2 py-1 border border-slate-800/80 rounded-lg leading-5 bg-slate-900/60 text-slate-200 placeholder-slate-600 focus:outline-none focus:bg-slate-900 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 text-[10px] transition-all"
+                class="block w-full pl-8 pr-8 py-1 border border-slate-800/80 rounded-lg leading-5 bg-slate-900/60 text-slate-200 placeholder-slate-600 focus:outline-none focus:bg-slate-900 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 text-[10px] transition-all"
               />
+              <button 
+                v-if="searchQuery"
+                @click="searchQuery = ''"
+                class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+              >
+                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
             <!-- Refresh Button -->
             <button 
@@ -682,8 +709,17 @@ onUnmounted(() => {
               v-model="searchQuery"
               type="text" 
               placeholder="搜索股票代码/名称..." 
-              class="block w-full pl-8 pr-2.5 py-1 border border-slate-800/80 rounded-lg leading-5 bg-slate-900/60 text-slate-200 placeholder-slate-600 focus:outline-none focus:bg-slate-900 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 text-[10px] transition-all"
+              class="block w-full pl-8 pr-8 py-1 border border-slate-800/80 rounded-lg leading-5 bg-slate-900/60 text-slate-200 placeholder-slate-600 focus:outline-none focus:bg-slate-900 focus:ring-1 focus:ring-red-500/50 focus:border-red-500/50 text-[10px] transition-all"
             />
+            <button 
+              v-if="searchQuery"
+              @click="searchQuery = ''"
+              class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-500 hover:text-slate-350 transition-colors focus:outline-none"
+            >
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           <div class="w-px h-4 bg-slate-800 screenshot-hide"></div>
